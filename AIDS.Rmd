@@ -1,0 +1,24 @@
+---
+title: "AIDS Clinical Trials"
+author: "Hailey Lee"
+date: "due 4/8/2019"
+output: html_document
+---
+
+```{r global_options, include=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, fig.height=3, fig.width=5, 
+                      fig.align = "center")
+library(tidyverse)
+library(broom)
+```
+
+```{r}
+AIDSdata <- read_csv("Desktop/MATH150/AIDSdata.csv")
+
+dim(AIDSdata)
+head(AIDSdata)
+names(AIDSdata)
+str(AIDSdata)
+summary(AIDSdata)
+```
+
