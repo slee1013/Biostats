@@ -1,0 +1,179 @@
+---
+title: "Efficacy of Additional IDV with Two Nucleoside Analogues in AIDS Treatment"
+author: "Hailey Lee"
+date: "due 5/3/2019"
+output: pdf_document
+---
+
+```{r global_options, include=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, fig.height=3, fig.width=5, 
+                      fig.align = "center")
+library(tidyverse)
+library(broom)
+library(survival)
+library(survminer)
+```
+
+# Introduction
+Despite today's cutting edge technology, HIV still remains as a detrimental infection with no cure, killing millions of people annually$^1$. However, according to World Health Organization, a good consistdent treatment can decelerate the progression of HIV in the patient's body almost to a halt$^4$. In fact, with numerous ongoing researches and development for new treaments for HIV, many HIV patients are able to remain well and productive for a considerable amount of time. One of the prospective treatments is the combination of three drugs, two of which are nucleoside analogues with an additional potent HIV-protease inhibitor$^1$. Specifically, a recent research discovered that when a patient who has been under zidovudine (ZDV) treatment is exposed to indinavir (IDV), zidovudine (ZDV), and lamivudine (3TC) the progress of HIV is hindered$^1$. This discovery has raised a crucial question of the efficacy and safety of including indinavir in the three drug treatment for HIV patients. If the efficacy and safety of the new regimen are to be successful, its impact would include prolonging millions of HIV patients' lives as well as breaking a new progress in the goal of HIV cure. This report will attempt to address the effect of IDV in the three drug regimen through statistical analysis.
+
+# Methods
+The data used in the statistical analysis is obtained from Hammer et al's AIDS Clinical Trial, which is a double-blind, placebo-controlled trial.The data includes variables such as time to AIDS defining diagnosis or death, race/ethinicity, sex, medical history and others from 851 patients. It should be noted that the trial was stopped early as the efficacy results met a pre-specified level of significance at an interim analysis. Moreover, the variable txgrp will not be considered as it overlaps with the variable tx. The dataset for the txgrp contains only the values of "1= ZDV + 3TC", which is equivalent to the control group of tx, and "2= ZDV + 3TC + IDV", which is equivalent to the treatment group of tx. We do not have any data for the values "3= d4T + 3TC" and "4= d4t + 3TC + IDV". Therefore our question of interest is the effect of including IDV in the ZDV and 3TC regimen.
+
+The analysis starts with some explanatory data analysis, looking at the distributions of the sample variables and correlations. The next step is survival analysis. Several Kaplan-Meier curves were created to examine the difference in survival probabiity and cumulative hazard between the treatment and the control group. Then, a Cox PH model is created based on the variables chosen through model building techniques to best represent the survival information. For model building, Akaike’s Information Criteria through backward selection and the Drop-in-deviance test were used to select the best variables. The next step is to examine the assumptions of the Cox PH model to validate the inferences that will be made. One of the assumptions is Proportional Hazard assumption and it is examined through Schoenfeld Residual Test. After checking that all the assumptions are met, inferences and inpretations based on the results are made.
+
+# Explanatory Data Analysis
+
+```{r EDA1}
+AIDSdata <- read.csv("~/Desktop/MATH150/AIDSdata.csv")
+
+time <- AIDSdata$time
+censor <- AIDSdata$censor
+tx <- AIDSdata$tx
+strat2 <- AIDSdata$strat2
+sex <- AIDSdata$sex
+raceth <- AIDSdata$raceth
+ivdrug <- AIDSdata$ivdrug
+hemophil <- AIDSdata$hemophil
+karnof <-AIDSdata$karnof
+cd4 <- AIDSdata$cd4
+priorzdv <- AIDSdata$priorzdv
+age <- AIDSdata$age
+
+tx <- as.factor(tx)
+strat2 <- as.factor(strat2)
+sex <- as.factor(sex)
+ivdrug <- as.factor(ivdrug)
+raceth <-as.factor(raceth)
+hemophil <- as.factor(hemophil)
+karnof <- as.factor(karnof)
+
+cor(AIDSdata)
+```
+Observing the correlation matrix, we find that time and time_d (0.83), cd4 and strat2(0.72) have noticeably high corrleation. Looking into the context of the variables, it makes sense that time to AIDS diagnosis or death would be correlated to timet to death. Similarly, it also makes sense that the baseline CD4 count would correlate to CD4 stratum at screening. This is important to note as multicollinearity may cause problems in later analysis and inference.
+
+Three charts for distribution of age, sex, and race/ethinicty are created to see how represenatative the sample is. 
+
+```{r EDA2}
+hist(age)
+
+matrix_sex <- matrix(c(717, 134),ncol=2)
+colnames(matrix_sex) <- c("Male","Female")
+rownames(matrix_sex) <- c("Count")
+matrix_sex <- as.table(matrix_sex)
+barplot(matrix_sex, main="Distribution of Sex",xlab = "Sex",ylab = "Count")
+
+
+matrix_raceth <- matrix(c(447,235,150,10,9),ncol=5)
+colnames(matrix_raceth) <- c("White Non-Hispanic","Black Non-Hispanic","Hispanic","Asian, Pacific Islander","American Indian, Alaskan Native")
+rownames(matrix_raceth) <- c("Count")
+matrix_raceth <- as.table(matrix_raceth)
+barplot(matrix_raceth, main="Distribution of Race/Ethnicity",xlab = "Race/Ethnicity",cex.names=.5,ylab = "Count" )
+```
+Looking at the age distribution, we can see that the samples are fairly normally distributed. The distribution of sex is highly skewed towards male. Similarly, the distribution of race/ethnicity shows that the sample is mainly from white non-hispanic patients. However, according to CDC, most of those living with HIV are male and white non-hispanic ranks the highest of the population with black non-hispanic following after$^4$.
+
+# Survival Curves
+First, the figure below is the Kaplan-Meier curve without any grouping. This is the null model that shows the overall survival probability of event, namely AIDS diagnosis or death, following the time (in day) axis. The second figure is the side-by-side view of the Kaplan-Meirer curve for treatment and control group, and the corresponding cumulative hazard function for the same groups. From the Kaplan-Meier curve we can observe that there is higher probability of survival in the treatment group (with IDV) compared to the control group (without IDV). Similarly, there exists more cumulative hazard for the treatment group compared to the control group. Note that in both Kaplan-Meier curves, the survival probability axis is scaled to range from 0.85 to 1.00, not 0 to 1.
+
+```{r Survival Function w/o Grouping}
+surv.obj <- Surv(time,censor)
+surv.everyone <- survfit(surv.obj ~ 1, data = AIDSdata)
+
+ggsurvplot(surv.everyone, ylim=c(0.85,1), title="Kaplan-Meier Curve without Grouping", xlab="Time (day)",risk.table = TRUE, pval = TRUE,conf.int = TRUE, ggtheme = theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+, risk.table.y.text.col = TRUE, risk.table.y.text = FALSE,risk.table.height = 0.45)
+```
+
+```{r Survival Function}
+KM<- survfit(surv.obj~tx,type="kaplan-meier", data=AIDSdata)
+
+par(oma = c(2,0,0,0))
+
+par(mfrow=c(1,2))
+plot(KM,lty=1:2, ylim=c(0.85,1),main="KM Curve for Treatment and Control Group", xlab="Time (day)",ylab="Survival Probability", cex.main=0.9)
+plot(KM, fun="cumhaz",lty=1:2, main="Cumulative Hazard Function", cex.main=0.9, xlab="Time (day)", ylab="Cumulative Hazard")
+
+par(fig = c(0, 1, 0, 1), oma = c(0, 0, 0, 0), mar = c(0, 0, 0, 0), new = TRUE)
+plot(0, 0, type = "n", bty = "n", xaxt = "n", yaxt = "n")
+legend("bottom",c("without IDV","with IDV"),lty=1:2,xpd = TRUE, horiz = TRUE, inset = c(0,0))
+```
+
+# Model Building
+I selected Akaike’s Information Criteria for model building technique. This process conducts the backward model selection by starting from a full model with every variable included and eliminates insignificant variables downward.The objective is to find the model that provides the least AIC and produces the best survival information.
+
+The variables that will be tested through the step function are: tx, sex, karnof, cd4, log(priorzdv), age, and all interaction terms among these variables. Notice that the list of variables does not contain strat2, hemophil, and raceth. As discussed in the Explanatory Data Analysis, cd4 and strat2 has a high corrleation, which leads to a problem of multicolinearilty. To avoid this problem, I selected one of the variables, cd4, to include in the AIC model. I choose cd4 because it is a continuous variable, compared to strat2 which is a discrete/binary variable. cd4 will provide more power and sensitivity to the model. Next omitted variables are hemophil and raceth. These two variables are omitted from the AIC model due to failure of convergence in the step function. However, following the results of AIC model, I will be conducnting the drop in deviance test to examine the model including these variables.
+
+```{r}
+model.AIC <- coxph(surv.obj ~ (tx + sex + cd4 + log(priorzdv) + age + ivdrug + karnof)^2, data = AIDSdata)
+
+step(model.AIC, data = AIDSdata, direction = "backward", k = 2)
+```
+
+From Akaike’s Information Criteria, we obtain the model coxph(formula = surv.obj ~ tx + sex + cd4 + log(priorzdv) + age + ivdrug + karnof + tx:sex + tx:log(priorzdv) + sex:karnof + log(priorzdv):ivdrug, data = AIDSdata)" to best represent the cox PH model. However, we can see in the p-values that some of the terms are not significant. Specifically, there are 7 terms with high p-values: tx with p-value = 0.5267 > 0.05, sex with p-value = 0.0674 > 0.05, log(priorzdv) with p-value = 0.3621 > 0.05, age with p-value = 0.1202 > 0.05, karnof with p-value = 0.5178, tx:sex with p-value = 0.0690 > 0.05, and sex:karnof with p-value = 0.0740 > 0.05. We will be testing if these terms are necessary in the model. We will also incorporate the variables that were omitted from the first AIC process, namely hemophil, raceth and the interaction between the two. 
+
+We first eliminate hemophil:raceth, hemophil, raceth. We obtain G-statistic of 0.143704 with 3 degrees of freedom, which gives us p-value of 0.9861204 > 0.05. Thus, we can reject the null hypothesis and conclude that we do not need those terms in the model.
+
+```{r}
+model_2 <- coxph(surv.obj ~ tx + sex + cd4 + log(priorzdv) + age + ivdrug + karnof + tx:sex + tx:log(priorzdv) + sex:karnof + log(priorzdv):ivdrug + hemophil + raceth + raceth:hemophil, data = AIDSdata)
+
+model_3 <- coxph(surv.obj ~ tx + sex + cd4 + log(priorzdv) + age + ivdrug + karnof + tx:sex + tx:log(priorzdv) + sex:karnof + log(priorzdv):ivdrug, data = AIDSdata)
+
+G3 = 2*(model_2$loglik[2] - model_3$loglik[2])
+G3
+1-pchisq(G3, 3)
+```
+
+Similarly, we proceed to eliminate the terms with highest p-values, namely tx, karnof, log(priorzdv), and age. We obtain G-statistic of 4.15885 with 4 degrees of freedom, which corresponds to the p-value of 0.3526382 > 0.05. Thus, we can reject the null hypothesis and conclude that we do not need those terms in the model.
+
+```{r}
+model_4 <- coxph(surv.obj ~ sex + cd4 + ivdrug + tx:sex + tx:log(priorzdv) + sex:karnof + log(priorzdv):ivdrug, data = AIDSdata)
+
+G4 = 2*(model_3$loglik[2] - model_4$loglik[2]) 
+G4
+1-pchisq(G4, 4)
+```
+
+The final model and its summary is shown below.
+```{r}
+model_final <- model_4
+summary(model_final)
+ggforest(model_final, data = AIDSdata)
+```
+
+The summary of Cox PH model delivers a complete report of the model. We can see that the model includes "sex","cd4","ivdrug" as well as some interaction terms such as "sex:tx","tx:log(priorzdv)","sex:karnof","ivdrug:log(priorzdv)". All other variables have been eliminiated from the model. We can also see that the p-values for the Wald Test and Score (logrank) test are statistically significant, implying the model is fairly significant.
+
+In the summary of the model, the hazard ratio (HR) is shown through the colomn of exp(coef). A positive sign implies that the hazard (or risk of AIS diagnosis/death) is higher for patients with higher values of the corresponding variable. The given HR is the ratio of the second group relative to the first group. For example, in sex, the number 94.101217 means that female (coded 2) have less hazard than male (coded 1) by a factor of 94.10, or 5.9%. Below the summary, there exists a full HR table that shows the list of HR with corresponding confidence intervals for each factor.
+
+Overall, while sex, sex:tx, and ivdrug:log(priorzdv) have a positive coefficient, all the other variables such as cd4, ivdrug, tx:log(priorzdv), and sex:karnof have negative coefficient. Therefore, sex (specifically, being female), and the interactions terms, sex:tx and ivdrug:log(priorzdv), are associated with better probability of survival.
+
+As discussed in the method section, the data is obtained from a double-blind, placebo-controlled trial. As it is an experiment, not an observational study, we can assume causation. In other words, the IDV treatment does increase the probability of survival, prolonging the time until AIDS diagnosis or death.
+
+In addition, this conclusion may be extended to the general HIV patient population whose CD4 cells per cubic millimeter are no more than 200 and those who've had at least three months of prior zidovudine therapy.
+
+# Schoenfeld Residuals
+There are three technical conditions (or assumptions) for Cox PH model. First assumption is that all the observations must be independent. Similarly, second assumption is that all the censorings are independent. Last assumption is the Proportional Hazard Assumption. In other words, the hazard ratios are not dependent on time.
+
+The Schoenfeld Residuals can test the last assumption, the proportional Hazard assumption. It tests the independence between residuals and time.
+
+The Schoenfeld Residual for $x_l$ and any subject $i$ who is still alive at time $t_j$ is difference between the covariate $x_{i1}$ for that subject and the weighted average of the covariates in the risk set$^2$. Mathematically, Schoenfeld residual$_i$ = $x_{i1}-\overline{x}_1(\beta,t_j)$ where $x_{i1}$ is the covariate value for the individual that failed and $\overline{m}_1(\beta,t_j)$ is the average value for the $l$th covariate.$^2$ Therefore, we obtain a separate residual graph for each covariate. The graph will plot the residuals against time axis. The Schoenfeld residuals to check the fit of Cox PH model. Here, if the plot of Schoenfeld residuals against time shows a non-random pattern,we can say that the PH assumption has been violated.
+
+```{r}
+fit <- cox.zph(model_final)
+fit
+```
+We can see from the output above that the test is not significant for all the covariates, and the global test is also not statistically significant. Therefore, we can assume the proportional hazard. We expect to see random residual plots for all covariates.
+
+```{r}
+plot(fit)
+```
+
+The plots contain 1 solid line that smoothes out the fit of the plot with 2 dotted lines above and below for +/-2 standard error. Looking at the graphs we can verify that there is no pattern along the time axis. For example, the Schoenfeld Residual plot for sex covariate does not appear to have any noticeable patterns, which means that men are just as likely to have AIDS diagnosis or death as women, and vice versa. It shows that the hazard ratio between two groups is constant. Therefore, we can conclude that the proportional hazard assumption has been met.
+
+# References
+[1] Hammer, Scott M., et al. “A Controlled Trial of Two Nucleoside Analogues plus Indinavir in Persons with Human Immunodeficiency Virus Infection and CD4 Cell Counts of 200 per Cubic Millimeter or Less | NEJM.” The New England Journal of Medicine, 11 Sept. 1997.
+
+[2] Hardin, Jo. “Methods in Biostatistics Online Notes.” ST47S, 1 May 2019, st47s.com/Math150/Notes/.
+
+[3] “HIV/AIDS.” Centers for Disease Control and Prevention, Centers for Disease Control and Prevention, 9 Mar. 2017, www.cdc.gov/hiv/group/gender/men/index.html.
+
+[4] “HIV/AIDS.” World Health Organization, World Health Organization, 19 Dec. 2017, www.who.int/features/qa/71/en/.
+
